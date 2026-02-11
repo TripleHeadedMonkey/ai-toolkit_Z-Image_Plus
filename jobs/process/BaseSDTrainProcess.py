@@ -109,7 +109,14 @@ class BaseSDTrainProcess(BaseTrainProcess):
             self.network_config = NetworkConfig(**network_config)
         else:
             self.network_config = None
-        self.train_config = TrainConfig(**self.get_conf('train', {}))
+        # Allow overriding optimizer LR separately for TE / UNet without requiring TrainConfig schema changes.
+        _train_raw = dict(self.get_conf('train', {}) or {})
+        # These are consumed by BaseSDTrainProcess when building optimizer param groups.
+        # They are intentionally popped so TrainConfig doesn't need to know about them.
+        self.text_encoder_lr_override = _train_raw.pop('text_encoder_lr', None)
+        self.unet_lr_override = _train_raw.pop('unet_lr', None)
+
+        self.train_config = TrainConfig(**_train_raw)
         model_config = self.get_conf('model', {})
         self.modules_being_trained: List[torch.nn.Module] = []
 
@@ -127,7 +134,27 @@ class BaseSDTrainProcess(BaseTrainProcess):
             self.has_first_sample_requested = False
             self.first_sample_config = self.sample_config
         self.logging_config = LoggingConfig(**self.get_conf('logging', {}))
-        self.logger = create_logger(self.logging_config, config, self.save_root)
+
+        # --- MANDATORY FIX FOR NEW TOOLKIT VERSION ---
+        # The new UILogger requires us to manually define where logs go.
+        training_folder = self.get_conf('training_folder', None)
+        if training_folder:
+            job_name = self.config.get('name', 'training')
+            training_full_path = os.path.join(training_folder, job_name)
+            log_dir = os.path.join(training_full_path, 'logs')
+            
+            os.makedirs(log_dir, exist_ok=True)
+            save_root_for_logs = log_dir
+        else:
+            # Fallback if no training folder is defined
+            save_root_for_logs = os.path.join(os.getcwd(), "logs")
+            os.makedirs(save_root_for_logs, exist_ok=True)
+
+        print(f"[INFO] Logs will be saved to: {save_root_for_logs}")
+
+        # Pass the calculated path to the logger to satisfy the "save_root provided" requirement
+        self.logger = create_logger(self.logging_config, config, save_root=save_root_for_logs)
+
         self.optimizer: torch.optim.Optimizer = None
         self.lr_scheduler = None
         self.data_loader: Union[DataLoader, None] = None
@@ -816,23 +843,11 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
                 if len(paths) > 0:
                     latest_path = max(paths, key=os.path.getctime)
-        
-        if latest_path is None and self.network_config is not None and self.network_config.pretrained_lora_path is not None:
-            # set pretrained lora path as load path if we do not have a checkpoint to resume from
-            if os.path.exists(self.network_config.pretrained_lora_path):
-                latest_path = self.network_config.pretrained_lora_path
-                print_acc(f"Using pretrained lora path from config: {latest_path}")
-            else:
-                # no pretrained lora found
-                print_acc(f"Pretrained lora path from config does not exist: {self.network_config.pretrained_lora_path}")
 
         return latest_path
 
     def load_training_state_from_metadata(self, path):
         if not self.accelerator.is_main_process:
-            return
-        if path is not None and self.network_config is not None and path == self.network_config.pretrained_lora_path:
-            # dont load metadata from pretrained lora
             return
         meta = None
         # if path is folder, then it is diffusers
@@ -1304,33 +1319,28 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     # if we have a 5d tensor, then we need to do it on a per batch item, per channel basis, per frame
                     s = (noise.shape[0], noise.shape[1], noise.shape[2], 1, 1)
                 
-                noise = noise * noise_multiplier
+                if self.train_config.random_noise_multiplier > 0.0:
+                    
+                    # do it on a per batch item, per channel basis
+                    noise_multiplier = 1 + torch.randn(
+                        s,
+                        device=noise.device,
+                        dtype=noise.dtype
+                    ) * self.train_config.random_noise_multiplier
                 
-                if self.train_config.do_signal_correction_noise:
-                    batch_noise = latents.clone().to(noise.device, dtype=noise.dtype)
-                    scn_scale = torch.randn(
-                        batch_noise.shape[0], batch_noise.shape[1], 1, 1,
-                        device=batch_noise.device, 
-                        dtype=batch_noise.dtype
-                    ) * self.train_config.signal_correction_noise_scale
-                    batch_noise = batch_noise * scn_scale
-                    noise = noise + batch_noise 
+            with self.timer('make_noisy_latents'):
+
+                noise = noise * noise_multiplier
                 
                 if self.train_config.random_noise_shift > 0.0:
                     # get random noise -1 to 1
                     noise_shift = torch.randn(
-                        batch_size, latents.shape[1], 1, 1,
+                        s,  
                         device=noise.device,
                         dtype=noise.dtype
                     ) * self.train_config.random_noise_shift
                     # add to noise
                     noise += noise_shift
-                
-                if self.train_config.random_noise_multiplier > 0.0:
-                    sigma = self.train_config.random_noise_multiplier
-                    noise_multiplier = torch.exp(torch.randn(s, device=noise.device, dtype=noise.dtype) * sigma)
-                
-            with self.timer('make_noisy_latents'):
 
                 latent_multiplier = self.train_config.latent_multiplier
 
@@ -1341,14 +1351,6 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     latent_multiplier = normalizer
 
                 latents = latents * latent_multiplier
-                
-                if self.train_config.do_blank_stabilization:
-                    # zero out latents with blank prompts
-                    blank_latent = torch.zeros_like(latents)
-                    for i, prompt in enumerate(conditioned_prompts):
-                        if prompt.strip() == '':
-                            latents[i] = blank_latent[i]
-                
                 batch.latents = latents
 
                 # normalize latents to a mean of 0 and an std of 1
@@ -1681,13 +1683,25 @@ class BaseSDTrainProcess(BaseTrainProcess):
             if self.train_config.gradient_checkpointing:
                 self.sd.refiner_unet.enable_gradient_checkpointing()
 
+                # Respect training config for text encoder.
+        # If text embeddings are cached or TE is quantized, TE must remain frozen.
+        te_should_train = bool(getattr(self.train_config, "train_text_encoder", False))
+        if getattr(self.train_config, "cache_text_embeddings", False) or getattr(self, "is_caching_text_embeddings", False):
+            te_should_train = False
+        if bool(getattr(self.model_config, "quantize_te", False)):
+            te_should_train = False
+
         if isinstance(text_encoder, list):
             for te in text_encoder:
-                te.requires_grad_(False)
-                te.eval()
+                te.requires_grad_(te_should_train)
+                te.train(te_should_train)
+                if not te_should_train:
+                    te.eval()
         else:
-            text_encoder.requires_grad_(False)
-            text_encoder.eval()
+            text_encoder.requires_grad_(te_should_train)
+            text_encoder.train(te_should_train)
+            if not te_should_train:
+                text_encoder.eval()
         unet.to(self.device_torch, dtype=dtype)
         unet.requires_grad_(False)
         unet.eval()
@@ -1730,6 +1744,15 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     network_kwargs['ignore_if_contains'] = lorm_ignore_if_contains
                     network_kwargs['parameter_threshold'] = lorm_parameter_threshold
                     network_kwargs['target_lin_modules'] = LORM_TARGET_REPLACE_MODULE
+
+                if self.network_config.type.lower() == 'loha':
+                    from toolkit.loha_network import LoHaNetwork
+                    NetworkClass = LoHaNetwork
+                    # LoHa doesn't use standard lora_dim/alpha names in init sometimes, 
+                    # but our LoHaNetwork wrapper standardizes this.
+                    # We ensure kwargs don't conflict
+                    if 'conv_lora_dim' in network_kwargs: del network_kwargs['conv_lora_dim']
+                    if 'conv_alpha' in network_kwargs: del network_kwargs['conv_alpha']
 
                 # if is_lycoris:
                 #     preset = PRESET['full']
@@ -1808,8 +1831,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
                 # LyCORIS doesnt have default_lr
                 config = {
-                    'text_encoder_lr': self.train_config.lr,
-                    'unet_lr': self.train_config.lr,
+                    # allow separate LR for text encoder when provided in train config
+                    'text_encoder_lr': (self.text_encoder_lr_override if self.text_encoder_lr_override is not None else self.train_config.lr),
+                    'unet_lr': (self.unet_lr_override if self.unet_lr_override is not None else self.train_config.lr),
                 }
                 sig = inspect.signature(self.network.prepare_optimizer_params)
                 if 'default_lr' in sig.parameters:
@@ -1923,8 +1947,8 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 params = self.sd.prepare_optimizer_params(
                     unet=self.train_config.train_unet,
                     text_encoder=self.train_config.train_text_encoder,
-                    text_encoder_lr=self.train_config.lr,
-                    unet_lr=self.train_config.lr,
+                    text_encoder_lr=(self.text_encoder_lr_override if self.text_encoder_lr_override is not None else self.train_config.lr),
+                    unet_lr=(self.unet_lr_override if self.unet_lr_override is not None else self.train_config.lr),
                     default_lr=self.train_config.lr,
                     refiner=self.train_config.train_refiner and self.sd.refiner_unet is not None,
                     refiner_lr=self.train_config.refiner_lr,
@@ -2225,7 +2249,6 @@ class BaseSDTrainProcess(BaseTrainProcess):
             with torch.no_grad():
                 # torch.cuda.empty_cache()
                 # if optimizer has get_lrs method, then use it
-                learning_rate = 0.0
                 if not did_oom and loss_dict is not None:
                     if hasattr(optimizer, 'get_avg_learning_rate'):
                         learning_rate = optimizer.get_avg_learning_rate()
@@ -2296,10 +2319,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
                             # log to tensorboard
                             if self.accelerator.is_main_process:
                                 if self.writer is not None:
-                                    if loss_dict is not None:
-                                        for key, value in loss_dict.items():
-                                            self.writer.add_scalar(f"{key}", value, self.step_num)
-                                        self.writer.add_scalar(f"lr", learning_rate, self.step_num)
+                                    for key, value in loss_dict.items():
+                                        self.writer.add_scalar(f"{key}", value, self.step_num)
+                                    self.writer.add_scalar(f"lr", learning_rate, self.step_num)
                                 if self.progress_bar is not None:
                                     self.progress_bar.unpause()
                         
@@ -2308,11 +2330,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
                             self.logger.log({
                                 'learning_rate': learning_rate,
                             })
-                            if loss_dict is not None:
-                                for key, value in loss_dict.items():
-                                    self.logger.log({
-                                        f'loss/{key}': value,
-                                    })
+                            for key, value in loss_dict.items():
+                                self.logger.log({
+                                    f'loss/{key}': value,
+                                })
                     elif self.logging_config.log_every is None:
                         if self.accelerator.is_main_process:
                             # log every step
@@ -2336,8 +2357,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 
                 # commit log
                 if self.accelerator.is_main_process:
-                    with self.timer('commit_logger'):
-                        self.logger.commit(step=self.step_num)
+                    self.logger.commit(step=self.step_num)
 
                 # sets progress bar to match out step
                 if self.progress_bar is not None:
