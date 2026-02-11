@@ -2,6 +2,8 @@
 
 AI Toolkit is an all in one training suite for diffusion models. I try to support all the latest models on consumer grade hardware. Image and video models. It can be run as a GUI or CLI. It is designed to be easy to use but still have every feature imaginable.
 
+Now with added support for Text encoder and Transformer training on Z-Image models, simultaneously on only 24GB of VRAM. Example config at the bottom of the page. To make it fit on 24GB of VRAM, it requires layer offloading of the Transformer. And there is now 2 fields for Learning Rate, Text Encoder and Transformer/Unet. Change "type" to Loha to train a loha.
+
 ## Support My Work
 
 If you enjoy my projects or use them commercially, please consider sponsoring me. Every bit helps! 💖
@@ -540,3 +542,125 @@ Only larger updates are listed here. There are usually smaller daily updated tha
 - Added support for SD 1.5 in the UI
 - Fixed UI Wan 2.1 14b name bug
 - Added support for for conv training in the UI for models that support it
+
+- Example config:
+  ---
+job: "extension"
+config:
+  name: "my_first_lora_v1"
+  process:
+    - type: "diffusion_trainer"
+      training_folder: "insert output folder for training"
+      sqlite_db_path: "./aitk_db.db"
+      device: "cuda"
+      trigger_word: null
+      performance_log_every: 10
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+        conv: 16
+        conv_alpha: 16
+        lokr_full_rank: true
+        lokr_factor: -1
+        network_kwargs:
+          ignore_if_contains: []
+      save:
+        dtype: "bf16"
+        save_every: 250
+        max_step_saves_to_keep: 32
+        save_format: "diffusers"
+        push_to_hub: false
+      datasets:
+        - folder_path: "insert dataset here"
+          mask_path: null
+          mask_min_value: 0.1
+          default_caption: ""
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          cache_latents_to_disk: false
+          is_reg: false
+          network_weight: 1
+          resolution:
+            - 512
+            - 768
+            - 1024
+          controls: []
+          shrink_video_to_frames: true
+          num_frames: 1
+          flip_x: false
+          flip_y: false
+          num_repeats: 1
+      train:
+        batch_size: 1
+        bypass_guidance_embedding: false
+        steps: 6000
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: true
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        optimizer: "adamw8bit"
+        timestep_type: "weighted"
+        content_or_style: "balanced"
+        optimizer_params:
+          weight_decay: 0.0001
+        unload_text_encoder: false
+        cache_text_embeddings: false
+        lr: 0.0001
+        unet_lr: 0.0000056
+        text_encoder_lr: 0.0000325
+        ema_config:
+          use_ema: false
+          ema_decay: 0.99
+        skip_first_sample: false
+        force_first_sample: false
+        disable_sampling: false
+        dtype: "bf16"
+        diff_output_preservation: false
+        diff_output_preservation_multiplier: 1
+        diff_output_preservation_class: "person"
+        switch_boundary_every: 1
+        loss_type: "mse"
+      logging:
+        log_every: 1
+        use_ui_logger: true
+      model:
+        name_or_path: "Insert Model Path here"
+        quantize: true
+        qtype: "qfloat8"
+        quantize_te: true
+        qtype_te: "qfloat8"
+        arch: "zimage:turbo"
+        low_vram: true
+        model_kwargs: {}
+        layer_offloading: true
+        layer_offloading_text_encoder_percent: 0
+        layer_offloading_transformer_percent: 1
+        assistant_lora_path: "ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors"
+      sample:
+        sampler: "flowmatch"
+        sample_every: 250
+        width: 1024
+        height: 1024
+        samples:
+          - prompt: "woman with red hair, playing chess at the park, bomb going off in the background"
+          - prompt: "a woman holding a coffee cup, in a beanie, sitting at a cafe"
+          - prompt: "a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini"
+          - prompt: "a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background"
+          - prompt: "a bear building a log cabin in the snow covered mountains"
+          - prompt: "woman playing the guitar, on stage, singing a song, laser lights, punk rocker"
+          - prompt: "hipster man with a beard, building a chair, in a wood shop"
+          - prompt: "photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop"
+          - prompt: "a man holding a sign that says, 'this is a sign'"
+          - prompt: "a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle"
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 1
+        sample_steps: 8
+        num_frames: 1
+        fps: 1
+meta:
+  name: "[name]"
+  version: "1.0"
