@@ -57,8 +57,26 @@ def print_once(msg):
 
 
 def broadcast_and_multiply(tensor, multiplier):
+    # ОТЛАДКА: проверяем устройства тензоров
+    #print(f"DEBUG broadcast_and_multiply:")
+    #print(f"  tensor device: {tensor.device}, shape: {tensor.shape}, dtype: {tensor.dtype}")
+    #print(f"  multiplier device: {multiplier.device}, shape: {multiplier.shape}, dtype: {multiplier.dtype}")
+    
+    # ФИКС 1: убедимся что оба тензора на одном устройстве
+    if tensor.device != multiplier.device:
+        #print(f"  WARNING: Device mismatch! Moving multiplier from {multiplier.device} to {tensor.device}")
+        multiplier = multiplier.to(tensor.device)
+    
+    # ФИКС 2: убедимся что оба тензора имеют одинаковый dtype
+    if tensor.dtype != multiplier.dtype:
+        #print(f"  WARNING: Dtype mismatch! tensor: {tensor.dtype}, multiplier: {multiplier.dtype}")
+        #print(f"  Converting multiplier from {multiplier.dtype} to {tensor.dtype}")
+        multiplier = multiplier.to(tensor.dtype)
+
     # Determine the number of dimensions required
     num_extra_dims = tensor.dim() - multiplier.dim()
+    
+    #print(f"  num_extra_dims: {num_extra_dims}")
 
     # Unsqueezing the tensor to match the dimensionality
     for _ in range(num_extra_dims):
@@ -67,10 +85,11 @@ def broadcast_and_multiply(tensor, multiplier):
     try:
         # Multiplying the broadcasted tensor with the output tensor
         result = tensor * multiplier
+        #print(f"  SUCCESS: Multiplication completed, result device: {result.device}, dtype: {result.dtype}")
     except RuntimeError as e:
-        print(e)
-        print(tensor.size())
-        print(multiplier.size())
+        #print(f"  ERROR in multiplication:")
+        #print(f"  tensor size: {tensor.size()}, device: {tensor.device}, dtype: {tensor.dtype}")
+        #print(f"  multiplier size: {multiplier.size()}, device: {multiplier.device}, dtype: {multiplier.dtype}")
         raise e
 
     return result
@@ -722,29 +741,42 @@ class ToolkitNetworkMixin:
         # builds a tensor for fast usage in the forward pass of the network modules
         # without having to set it in every single module every time it changes
         multiplier = self._multiplier
-        # get first module
-        try:
-            first_module = self.get_all_modules()[0]
-        except IndexError:
-            raise ValueError("There are not any lora modules in this network. Check your config and try again")
         
-        if hasattr(first_module, 'lora_down'):
-            device = first_module.lora_down.weight.device
-            dtype = first_module.lora_down.weight.dtype
-            if hasattr(first_module.lora_down, '_memory_management_device'):
-                device = first_module.lora_down._memory_management_device
-        elif hasattr(first_module, 'lokr_w1'):
-            device = first_module.lokr_w1.device
-            dtype = first_module.lokr_w1.dtype
-            if hasattr(first_module.lokr_w1, '_memory_management_device'):
-                device = first_module.lokr_w1._memory_management_device
-        elif hasattr(first_module, 'lokr_w1_a'):
-            device = first_module.lokr_w1_a.device
-            dtype = first_module.lokr_w1_a.dtype
-            if hasattr(first_module.lokr_w1_a, '_memory_management_device'):
-                device = first_module.lokr_w1_a._memory_management_device
+        # ПРОВЕРКА: если нет модулей, выходим
+        modules = self.get_all_modules()
+        if len(modules) == 0:
+            # Если нет модулей, используем CPU
+            device = torch.device("cpu")
+            dtype = torch.float32
         else:
-            raise ValueError("Unknown module type")
+            first_module = modules[0]
+            if hasattr(first_module, 'lora_down'):
+                device = first_module.lora_down.weight.device
+                dtype = first_module.lora_down.weight.dtype
+                # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: если device это CPU, пробуем получить GPU
+                if device.type == 'cpu' and torch.cuda.is_available():
+                    device = torch.device("cuda:0")
+                if hasattr(first_module.lora_down, '_memory_management_device'):
+                    device = first_module.lora_down._memory_management_device
+            elif hasattr(first_module, 'lokr_w1'):
+                device = first_module.lokr_w1.device
+                dtype = first_module.lokr_w1.dtype
+                # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: если device это CPU, пробуем получить GPU
+                if device.type == 'cpu' and torch.cuda.is_available():
+                    device = torch.device("cuda:0")
+                if hasattr(first_module.lokr_w1, '_memory_management_device'):
+                    device = first_module.lokr_w1._memory_management_device
+            elif hasattr(first_module, 'lokr_w1_a'):
+                device = first_module.lokr_w1_a.device
+                dtype = first_module.lokr_w1_a.dtype
+                # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: если device это CPU, пробуем получить GPU
+                if device.type == 'cpu' and torch.cuda.is_available():
+                    device = torch.device("cuda:0")
+                if hasattr(first_module.lokr_w1_a, '_memory_management_device'):
+                    device = first_module.lokr_w1_a._memory_management_device
+            else:
+                raise ValueError("Unknown module type")
+        
         with torch.no_grad():
             tensor_multiplier = None
             if isinstance(multiplier, int) or isinstance(multiplier, float):

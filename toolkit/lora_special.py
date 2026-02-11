@@ -143,7 +143,25 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
     UNET_TARGET_REPLACE_MODULE = ["UNet2DConditionModel"]
     # UNET_TARGET_REPLACE_MODULE_CONV2D_3X3 = ["ResnetBlock2D", "Downsample2D", "Upsample2D"]
     UNET_TARGET_REPLACE_MODULE_CONV2D_3X3 = ["UNet2DConditionModel"]
-    TEXT_ENCODER_TARGET_REPLACE_MODULE = ["CLIPAttention", "CLIPMLP"]
+    TEXT_ENCODER_TARGET_REPLACE_MODULE = [
+    "CLIPAttention",
+    "CLIPMLP",
+    # LLM / Qwen-family text encoders (e.g., z-image-turbo)
+    "Qwen3ForCausalLM",
+    "Qwen2ForCausalLM",
+    "Qwen2VLForConditionalGeneration",
+    # Some HF model wrapper classes commonly used for decoder-only LMs
+    "Qwen3Model",
+    "Qwen2Model",
+    "LlamaForCausalLM",
+    "LlamaModel",
+    "MistralForCausalLM",
+    "MistralModel",
+    "GemmaForCausalLM",
+    "GemmaModel",
+    "Phi3ForCausalLM",
+    "Phi3Model",
+]
     LORA_PREFIX_UNET = "lora_unet"
     PEFT_PREFIX_UNET = "unet"
     LORA_PREFIX_TEXT_ENCODER = "lora_te"
@@ -265,18 +283,11 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
         self.peft_format = peft_format
         self.is_transformer = is_transformer
         
-        # use the old format for older models unless the user has specified otherwise
-        self.use_old_lokr_format = False
-        if self.network_config is not None and hasattr(self.network_config, 'old_lokr_format'):
-            self.use_old_lokr_format = self.network_config.old_lokr_format
-        # also allow a false from the model itself
-        if base_model is not None and not base_model.use_old_lokr_format:
-            self.use_old_lokr_format = False
 
         # always do peft for flux only for now
         if self.is_flux or self.is_v3 or self.is_lumina2 or is_transformer:
-            # don't do peft format for lokr if using old format
-            if self.network_type.lower() != "lokr" or not self.use_old_lokr_format:
+            # don't do peft format for lokr
+            if self.network_type.lower() != "lokr":
                 self.peft_format = True
 
         if self.peft_format:
@@ -333,7 +344,8 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
             )
             loras = []
             skipped = []
-            attached_modules = []
+            attached_module_ids = set()
+            seen_lora_names = set()
             lora_shape_dict = {}
             for name, module in root_module.named_modules():
                 if module.__class__.__name__ in target_replace_modules:
@@ -348,8 +360,17 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
                         lora_name = [x for x in lora_name if x and x != ""]
                         lora_name = ".".join(lora_name)
                         # if it doesnt have a name, it wil have two dots
-                        lora_name.replace("..", ".")
+                        lora_name = lora_name.replace("..", ".")
                         clean_name = lora_name
+                        # Deduplicate: the same child_module can appear multiple times
+                        # when multiple parent modules match target_replace_modules (common for LLMs).
+                        if id(child_module) in attached_module_ids:
+                            continue
+
+                        # Deduplicate by name as well (safety)
+                        if lora_name in seen_lora_names:
+                            continue
+
                         if self.peft_format:
                             # we replace this on saving
                             lora_name = lora_name.replace(".", "$$")
@@ -452,6 +473,8 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
                                 **module_kwargs
                             )
                             loras.append(lora)
+                            attached_module_ids.add(id(child_module))
+                            seen_lora_names.add(clean_name)
                             if self.network_type.lower() == "lokr":
                                 try:
                                     lora_shape_dict[lora_name] = [list(lora.lokr_w1.weight.shape), list(lora.lokr_w2.weight.shape)]
@@ -483,7 +506,7 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
                     index = None
                     print(f"create LoRA for Text Encoder:")
 
-                replace_modules = LoRANetwork.TEXT_ENCODER_TARGET_REPLACE_MODULE
+                replace_modules = self.TEXT_ENCODER_TARGET_REPLACE_MODULE
 
                 if self.is_pixart:
                     replace_modules = ["T5EncoderModel"]
@@ -591,5 +614,4 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
                 all_params.append({"lr": unet_lr, "params": list(self.unet_conv_out.parameters())})
 
         return all_params
-
 
