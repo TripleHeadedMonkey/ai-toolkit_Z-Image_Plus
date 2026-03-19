@@ -539,6 +539,17 @@ export default function SimpleJob({
                     { value: 'style', label: 'Low Noise' },
                   ]}
                 />
+                {modelArch?.additionalSections?.includes('train.audio_loss_multiplier') && (
+                  <NumberInput
+                    label="Audio Loss Multiplier"
+                    className="pt-2"
+                    value={jobConfig.config.process[0].train.audio_loss_multiplier as number}
+                    onChange={value => setJobConfig(value, 'config.process[0].train.audio_loss_multiplier')}
+                    placeholder="eg. 1.0"
+                    docKey={'train.audio_loss_multiplier'}
+                    min={0}
+                  />
+                )}
                 <SelectInput
                   label="Loss Type"
                   className="pt-2"

@@ -1331,6 +1331,24 @@ class BaseSDTrainProcess(BaseTrainProcess):
             with self.timer('make_noisy_latents'):
 
                 noise = noise * noise_multiplier
+
+                if self.train_config.do_batch_noise_correction:
+                    if latents.shape[0] == 1:
+                        # if we only have a batch size of 1, then we cant do batch noise correction, so we skip it
+                        print_acc("Skipping batch noise correction because batch size is 1, increase batch size and num_repeats to use this feature")
+                    else:
+                        # shuffle tensors ensuring that no tensor is in the same position as before
+                        batch_noise = latents.clone().roll(
+                            shifts=torch.randint(1, latents.shape[0], (1,)).item(),
+                            dims=0,
+                        ).to(noise.device, dtype=noise.dtype)
+                        batch_noise_scale = torch.randn(
+                            batch_noise.shape[0], batch_noise.shape[1], 1, 1,
+                            device=batch_noise.device,
+                            dtype=batch_noise.dtype
+                        ) * self.train_config.batch_noise_correction_scale
+                        batch_noise = batch_noise * batch_noise_scale
+                        noise = noise + batch_noise
                 
                 if self.train_config.random_noise_shift > 0.0:
                     # get random noise -1 to 1
@@ -1859,7 +1877,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 if latest_save_path is not None:
                     print_acc(f"#### IMPORTANT RESUMING FROM {latest_save_path} ####")
                     print_acc(f"Loading from {latest_save_path}")
-                    extra_weights = self.load_weights(latest_save_path)
+                    # if merge network on save, then lora was saved merged in so do not load lora weights
+                    if not self.train_config.merge_network_on_save:
+                        extra_weights = self.load_weights(latest_save_path)
                     self.network.multiplier = 1.0
                 
                 if self.network_config.layer_offloading:
