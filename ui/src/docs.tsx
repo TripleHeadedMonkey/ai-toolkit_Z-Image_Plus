@@ -136,6 +136,17 @@ const docs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
+  'train.audio_loss_multiplier': {
+    title: 'Audio Loss Multiplier',
+    description: (
+      <>
+        When training audio and video, sometimes the video loss is so great that it outweights the audio loss, causing
+        the audio to become distorted. If you are noticing this happen, you can increase the audio loss multiplier to
+        give more weight to the audio loss. You could try something like 2.0, 10.0 etc. Warning, setting this too high
+        could overfit and damage the model.
+      </>
+    ),
+  },
   'datasets.flip': {
     title: 'Flip X and Flip Y',
     description: (
