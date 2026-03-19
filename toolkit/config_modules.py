@@ -495,6 +495,18 @@ class TrainConfig:
         # scale the prediction by this. Increase for more detail, decrease for less
         self.pred_scaler = kwargs.get('pred_scaler', 1.0)
 
+        # SDA (Self Distilled Acceleration) options
+        self.sda_enable = kwargs.get('sda_enable', False)
+        self.sda_anchor_weight = kwargs.get('sda_anchor_weight', 1.0)
+        self.sda_diversity_weight = kwargs.get('sda_diversity_weight', 0.1)
+        self.sda_anchor_huber_delta = kwargs.get('sda_anchor_huber_delta', 0.08)
+        self.sda_pool_kernel = kwargs.get('sda_pool_kernel', 8)
+        self.sda_div_skip_enable = kwargs.get('sda_div_skip_enable', True)
+        # normalized timestep threshold (0-1). if mean timestep is below this, diversity term is skipped
+        self.sda_div_skip_threshold = kwargs.get('sda_div_skip_threshold', 0.15)
+        # assistant masking behavior: assistant OFF for diversity pass and ON for anchor pass
+        self.sda_asymmetric_assistant_mask = kwargs.get('sda_asymmetric_assistant_mask', True)
+
         # repeats the prompt a few times to saturate the encoder
         self.prompt_saturation_chance = kwargs.get('prompt_saturation_chance', 0.0)
 
