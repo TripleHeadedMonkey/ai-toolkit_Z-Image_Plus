@@ -622,6 +622,15 @@ config:
         diff_output_preservation_class: "person"
         switch_boundary_every: 1
         loss_type: "mse"
+        # SDA options (z-image turbo)
+        sda_enable: true
+        sda_anchor_weight: 1.0
+        sda_diversity_weight: 0.1
+        sda_anchor_huber_delta: 0.08
+        sda_pool_kernel: 8
+        sda_div_skip_enable: true
+        sda_div_skip_threshold: 0.15
+        sda_asymmetric_assistant_mask: true
       logging:
         log_every: 1
         use_ui_logger: true

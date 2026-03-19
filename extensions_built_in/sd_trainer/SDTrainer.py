@@ -468,6 +468,125 @@ class SDTrainer(BaseSDTrainProcess):
 
         return output, batch.tensor.to(self.device_torch, dtype=get_torch_dtype(self.train_config.dtype))
 
+    def _sda_get_assistant_lora(self):
+        if hasattr(self.sd, "assistant_lora"):
+            return self.sd.assistant_lora
+        return None
+
+    def _sda_set_assistant_active(self, is_active: bool):
+        assistant_lora = self._sda_get_assistant_lora()
+        if assistant_lora is not None:
+            assistant_lora.is_active = is_active
+
+    def _sda_should_skip_diversity(self, timesteps: torch.Tensor) -> bool:
+        if not self.train_config.sda_div_skip_enable:
+            return False
+        denom = max(float(self.train_config.num_train_timesteps), 1.0)
+        timestep_norm = (timesteps.float() / denom).mean().item()
+        return timestep_norm < float(self.train_config.sda_div_skip_threshold)
+
+    @staticmethod
+    def _sda_pool_flatten(tensor: torch.Tensor, pool_kernel: int = 8) -> torch.Tensor:
+        if len(tensor.shape) == 5:
+            # video B,C,T,H,W -> flatten T into batch
+            b, c, t, h, w = tensor.shape
+            tensor = tensor.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        pool_kernel = max(int(pool_kernel), 1)
+        if pool_kernel > 1:
+            tensor = F.avg_pool2d(tensor, kernel_size=pool_kernel, stride=pool_kernel, ceil_mode=False)
+        return tensor.flatten(1)
+
+    def _compute_sda_loss(
+        self,
+        noisy_latents: torch.Tensor,
+        timesteps: torch.Tensor,
+        conditional_embeds: PromptEmbeds,
+        batch: 'DataLoaderBatchDTO',
+        pred_kwargs: dict,
+        noise_pred: torch.Tensor,
+        noise: torch.Tensor,
+    ):
+        if not self.train_config.sda_enable:
+            return None
+        if batch is None or batch.latents is None:
+            return None
+        # SDA currently only implemented in non-CFG path.
+        if self.train_config.do_cfg:
+            return None
+
+        dtype = get_torch_dtype(self.train_config.dtype)
+        pool_kernel = self.train_config.sda_pool_kernel
+
+        assistant_lora = self._sda_get_assistant_lora()
+        prior_assistant_state = assistant_lora.is_active if assistant_lora is not None else None
+
+        # build z2 from same clean latents with a different noise draw at same timesteps
+        with torch.no_grad():
+            latents = batch.latents.to(self.device_torch, dtype=dtype).detach()
+            noise_alt = self.get_noise(latents, latents.shape[0], dtype=dtype, batch=batch, timestep=timesteps).detach()
+            noisy_latents_alt = self.sd.add_noise(latents, noise_alt, timesteps).detach()
+            noisy_latents_alt = self.sd.condition_noisy_latents(noisy_latents_alt, batch)
+
+        try:
+            # quality anchor baseline (assistant ON if configured)
+            if self.train_config.sda_asymmetric_assistant_mask and assistant_lora is not None:
+                self._sda_set_assistant_active(True)
+            with torch.no_grad():
+                baseline_pred = self.predict_noise(
+                    noisy_latents=noisy_latents.to(self.device_torch, dtype=dtype),
+                    timesteps=timesteps,
+                    conditional_embeds=conditional_embeds.to(self.device_torch, dtype=dtype),
+                    unconditional_embeds=None,
+                    batch=batch,
+                    **pred_kwargs,
+                ).detach()
+
+                baseline_pred_alt = self.predict_noise(
+                    noisy_latents=noisy_latents_alt.to(self.device_torch, dtype=dtype),
+                    timesteps=timesteps,
+                    conditional_embeds=conditional_embeds.to(self.device_torch, dtype=dtype),
+                    unconditional_embeds=None,
+                    batch=batch,
+                    **pred_kwargs,
+                ).detach()
+
+            # diversity student pass (assistant OFF if configured)
+            if self.train_config.sda_asymmetric_assistant_mask and assistant_lora is not None:
+                self._sda_set_assistant_active(False)
+
+            student_pred = noise_pred
+            student_pred_alt = self.predict_noise(
+                noisy_latents=noisy_latents_alt.to(self.device_torch, dtype=dtype),
+                timesteps=timesteps,
+                conditional_embeds=conditional_embeds.to(self.device_torch, dtype=dtype),
+                unconditional_embeds=None,
+                batch=batch,
+                **pred_kwargs,
+            )
+
+            anchor_loss = torch.nn.functional.huber_loss(
+                student_pred.float(),
+                baseline_pred.float(),
+                reduction="mean",
+                delta=float(self.train_config.sda_anchor_huber_delta),
+            ) * float(self.train_config.sda_anchor_weight)
+
+            div_loss = torch.zeros_like(anchor_loss)
+            if not self._sda_should_skip_diversity(timesteps):
+                teacher_delta = baseline_pred_alt.float() - baseline_pred.float()
+                student_delta = student_pred_alt.float() - student_pred.float()
+
+                teacher_dir = self._sda_pool_flatten(teacher_delta, pool_kernel=pool_kernel)
+                student_dir = self._sda_pool_flatten(student_delta, pool_kernel=pool_kernel)
+
+                cosine = torch.nn.functional.cosine_similarity(student_dir, teacher_dir, dim=1, eps=1e-8)
+                div_loss = (1.0 - cosine).mean() * float(self.train_config.sda_diversity_weight)
+
+            return anchor_loss + div_loss
+        finally:
+            if prior_assistant_state is not None:
+                self._sda_set_assistant_active(prior_assistant_state)
+
     # you can expand these in a child class to make customization easier
     def calculate_loss(
             self,
@@ -1982,6 +2101,18 @@ class SDTrainer(BaseSDTrainProcess):
                             mask_multiplier=mask_multiplier,
                             prior_pred=prior_to_calculate_loss,
                         )
+
+                        sda_loss = self._compute_sda_loss(
+                            noisy_latents=noisy_latents,
+                            timesteps=timesteps,
+                            conditional_embeds=conditional_embeds,
+                            batch=batch,
+                            pred_kwargs=pred_kwargs,
+                            noise_pred=noise_pred,
+                            noise=noise,
+                        )
+                        if sda_loss is not None:
+                            loss = loss + sda_loss
                     
                     if self.train_config.diff_output_preservation or self.train_config.blank_prompt_preservation:
                         # send the loss backwards otherwise checkpointing will fail
