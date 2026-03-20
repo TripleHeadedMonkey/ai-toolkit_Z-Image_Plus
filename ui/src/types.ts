@@ -147,6 +147,24 @@ export interface TrainConfig {
   do_differential_guidance?: boolean;
   differential_guidance_scale?: number;
   audio_loss_multiplier?: number;
+  zimage_bootstrap_enabled?: boolean;
+  zimage_bootstrap_steps?: number;
+  zimage_bootstrap_decay?: 'linear' | 'cosine' | 'exp';
+  zimage_bootstrap_lr_multiplier?: number;
+  zimage_bootstrap_loss_weight?: number;
+  zimage_init_lora_path?: string;
+  zimage_init_lora_scale?: number;
+  zimage_init_strategy?: 'copy' | 'merge' | 'interpolate';
+  zimage_i2l_only?: boolean;
+  zimage_i2l_model_name_or_path?: string;
+  zimage_i2l_encoders_name_or_path?: string;
+  zimage_i2l_base_model_name_or_path?: string;
+  zimage_i2l_turbo_model_name_or_path?: string;
+  zimage_i2l_dataset_path?: string;
+  zimage_i2l_image_paths?: string[];
+  zimage_i2l_max_images?: number;
+  zimage_i2l_image_select_seed?: number;
+  zimage_i2l_output_path?: string;
 }
 
 export interface QuantizeKwargsConfig {
