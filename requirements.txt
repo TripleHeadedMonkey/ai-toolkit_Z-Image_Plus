@@ -40,3 +40,6 @@ scipy==1.12.0
 av==16.0.1
 torchcodec
 bitsandbytes
+# Runtime dependency for native Z-Image i2L generation path
+modelscope
+git+https://github.com/modelscope/DiffSynth-Studio.git

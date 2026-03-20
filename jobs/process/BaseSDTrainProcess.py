@@ -227,6 +227,8 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
         # to hold network if there is one
         self.network: Union[Network, None] = None
+        self.exit_after_hook_before_train_loop: bool = False
+        self.did_preloop_baseline_sample: bool = False
         self.adapter: Union[T2IAdapter, IPAdapter, ClipVisionAdapter, ReferenceAdapter, CustomAdapter, ControlNetModel, None] = None
         self.embedding: Union[Embedding, None] = None
         self.decorator: Union[Decorator, None] = None
@@ -2070,13 +2072,18 @@ class BaseSDTrainProcess(BaseTrainProcess):
         self.last_save_step = self.step_num
         ### HOOK ###
         self.hook_before_train_loop()
+        if getattr(self, "exit_after_hook_before_train_loop", False):
+            print_acc("Exiting after hook_before_train_loop by request.")
+            return
 
         if self.has_first_sample_requested and self.step_num <= 1 and not self.train_config.disable_sampling:
             print_acc("Generating first sample from first sample config")
             self.sample(0, is_first=True)
 
         # sample first
-        if self.train_config.skip_first_sample or self.train_config.disable_sampling:
+        if getattr(self, "did_preloop_baseline_sample", False):
+            print_acc("Skipping default baseline sample because pre-loop sampling already ran")
+        elif self.train_config.skip_first_sample or self.train_config.disable_sampling:
             print_acc("Skipping first sample due to config setting")
         elif self.step_num <= 1 or self.train_config.force_first_sample:
             print_acc("Generating baseline samples before training")

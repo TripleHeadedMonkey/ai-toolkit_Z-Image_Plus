@@ -51,3 +51,6 @@ matplotlib==3.10.1
 setuptools==69.5.1
 av==16.0.1
 torchcodec
+# Runtime dependency for native Z-Image i2L generation path
+modelscope
+git+https://github.com/modelscope/DiffSynth-Studio.git

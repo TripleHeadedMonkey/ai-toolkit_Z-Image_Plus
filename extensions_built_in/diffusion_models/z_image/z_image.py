@@ -1,4 +1,5 @@
 import os
+import json
 import types
 from typing import List, Optional
 
@@ -19,6 +20,7 @@ from optimum.quanto import freeze
 from toolkit.util.quantize import quantize, get_qtype, quantize_model
 from toolkit.memory_management import MemoryManager
 from safetensors.torch import load_file
+from safetensors import safe_open
 
 from transformers import AutoTokenizer, Qwen3ForCausalLM
 from diffusers import AutoencoderKL
@@ -145,11 +147,14 @@ class ZImageModel(BaseModel):
             if os.path.exists(te_folder_path):
                 base_model_path = model_path
 
+        self._ensure_local_sharded_safetensors_index(transformer_path)
+
         # 1. Load Transformer (Standard)
         transformer = ZImageTransformer2DModel.from_pretrained(
             transformer_path, 
             subfolder=transformer_subfolder, 
             torch_dtype=dtype,
+            use_safetensors=True,
             low_cpu_mem_usage=False, 
             ignore_mismatched_sizes=True
         )
@@ -251,6 +256,38 @@ class ZImageModel(BaseModel):
         self.unet = self.model
         self.pipeline = pipe
         self.print_and_status_update("Model Loaded")    # --- SURGICAL FIX: Custom Device State Handler ---
+
+    def _ensure_local_sharded_safetensors_index(self, transformer_dir: str):
+        if transformer_dir is None or not os.path.isdir(transformer_dir):
+            return
+
+        shard_files = [
+            f for f in os.listdir(transformer_dir)
+            if f.startswith("diffusion_pytorch_model-") and f.endswith(".safetensors")
+        ]
+        if len(shard_files) == 0:
+            return
+
+        index_file = os.path.join(transformer_dir, "diffusion_pytorch_model.safetensors.index.json")
+        if os.path.exists(index_file):
+            return
+
+        weight_map = {}
+        total_size = 0
+        for shard_file in sorted(shard_files):
+            shard_path = os.path.join(transformer_dir, shard_file)
+            total_size += os.path.getsize(shard_path)
+            with safe_open(shard_path, framework="pt", device="cpu") as sf:
+                for key in sf.keys():
+                    weight_map[key] = shard_file
+
+        index_payload = {
+            "metadata": {"total_size": total_size},
+            "weight_map": weight_map,
+        }
+        with open(index_file, "w", encoding="utf-8") as f:
+            json.dump(index_payload, f)
+        self.print_and_status_update("Created missing safetensors index for local sharded transformer")
     def set_device_state(self, state):
         # Helper to get attributes safe for dict or object
         def get_state_attr(obj, name, default=None):

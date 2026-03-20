@@ -317,6 +317,159 @@ const docs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
+  'train.zimage_bootstrap_enabled': {
+    title: 'Z-Image I2L Boost',
+    description: (
+      <>
+        Enables a Z-Image warm-start phase intended for Image-to-LoRA (I2L) boost workflows. This setting is intended
+        for the new Z-Image Turbo + I2L boost presets and should be used only when you want an early-step boost before
+        conventional training behavior.
+      </>
+    ),
+  },
+  'train.zimage_bootstrap_steps': {
+    title: 'Z-Image Boost Steps',
+    description: (
+      <>
+        Number of early training steps reserved for I2L boost behavior before fully switching to standard training. A
+        smaller value gives a gentle warm start; larger values keep the boost active longer.
+      </>
+    ),
+  },
+  'train.zimage_bootstrap_decay': {
+    title: 'Z-Image Boost Decay',
+    description: (
+      <>
+        Controls how quickly the boost effect fades out over boost steps. Linear is a safe default. Cosine is smoother
+        near the end, and exponential drops the boost more aggressively.
+      </>
+    ),
+  },
+  'train.zimage_bootstrap_loss_weight': {
+    title: 'Z-Image Boost Loss Weight',
+    description: (
+      <>
+        Strength multiplier for boost-phase loss contribution. Increase carefully if you want stronger early guidance,
+        and reduce it if the model appears over-biased by the boost phase.
+      </>
+    ),
+  },
+  'train.zimage_init_lora_path': {
+    title: 'Z-Image Init LoRA Path',
+    description: (
+      <>
+        Optional path to a LoRA used as initialization for the boost workflow. When provided, the trainer can use this
+        as a starting point before normal training proceeds.
+      </>
+    ),
+  },
+  'train.zimage_init_lora_scale': {
+    title: 'Z-Image Init LoRA Scale',
+    description: (
+      <>
+        Strength applied when blending i2L LoRA into the trainable network at startup. 1.0 applies the full i2L LoRA,
+        while lower values soften the initial impact to avoid overpowering early training.
+      </>
+    ),
+  },
+  'train.zimage_init_strategy': {
+    title: 'Z-Image Init Strategy',
+    description: (
+      <>
+        Selects how initialization LoRA weights are applied. Copy fully replaces matching weights, merge adds deltas,
+        and interpolate blends current and initialization weights.
+      </>
+    ),
+  },
+  'train.zimage_i2l_only': {
+    title: 'Z-Image I2L Only',
+    description: (
+      <>
+        Runs only the I2L process for this training run and skips the conventional follow-up training phase. Use this
+        when you want a pure Image-to-LoRA initialization style run.
+      </>
+    ),
+  },
+  'train.zimage_i2l_model_name_or_path': {
+    title: 'Z-Image I2L Model',
+    description: (
+      <>
+        Hugging Face model id (or local path) for the Image-to-LoRA generator model. Default is
+        <code>DiffSynth-Studio/Z-Image-i2L</code>.
+      </>
+    ),
+  },
+  'train.zimage_i2l_image_paths': {
+    title: 'Z-Image I2L Image Paths',
+    description: (
+      <>
+        Optional explicit image path list used for I2L generation. If unset, trainer will auto-select images from the
+        loaded datasets.
+      </>
+    ),
+  },
+  'train.zimage_i2l_dataset_path': {
+    title: 'Z-Image I2L Dataset Path',
+    description: (
+      <>
+        Optional dedicated folder for I2L image inputs (used before normal training begins). When set, trainer will use
+        up to <code>train.zimage_i2l_max_images</code> images from this folder.
+      </>
+    ),
+  },
+  'train.zimage_i2l_max_images': {
+    title: 'Z-Image I2L Max Images',
+    description: (
+      <>
+        Maximum number of input images used for I2L generation per run (capped at 6).
+      </>
+    ),
+  },
+  'train.zimage_i2l_image_select_seed': {
+    title: 'Z-Image I2L Image Select Seed',
+    description: (
+      <>
+        Optional seed for selecting fallback I2L images from the main training dataset when no dedicated I2L dataset
+        path or explicit image list is provided. Leave unset for random selection each run.
+      </>
+    ),
+  },
+  'train.zimage_i2l_device': {
+    title: 'Z-Image I2L Device',
+    description: (
+      <>
+        Device used for I2L generation runtime. Default is <code>cpu</code> to avoid VRAM spikes before training
+        begins. Set to <code>cuda</code> only if you have enough headroom.
+      </>
+    ),
+  },
+  'train.zimage_i2l_vram_limit_gb': {
+    title: 'Z-Image I2L VRAM Limit (GB)',
+    description: (
+      <>
+        Optional VRAM cap passed to DiffSynth <code>ZImagePipeline.from_pretrained(...)</code>. Set this when running
+        I2L on <code>cuda</code> to reduce peak memory during model load. Leave unset to use DiffSynth defaults.
+      </>
+    ),
+  },
+  'train.zimage_i2l_offload_mode': {
+    title: 'Z-Image I2L Offload Mode',
+    description: (
+      <>
+        Controls where DiffSynth keeps offloaded weights during I2L bootstrap. Use <code>cpu</code> for balanced speed,
+        or <code>disk</code> for the lowest VRAM usage (slower, but often more stable on 24GB cards).
+      </>
+    ),
+  },
+  'train.zimage_i2l_output_path': {
+    title: 'Z-Image I2L Output Path',
+    description: (
+      <>
+        Optional output path for generated I2L LoRA safetensors. If unset, the trainer writes to
+        <code>output/.../i2l/zimage_i2l_generated.safetensors</code>.
+      </>
+    ),
+  },
   'dataset.num_repeats': {
     title: 'Num Repeats',
     description: (
