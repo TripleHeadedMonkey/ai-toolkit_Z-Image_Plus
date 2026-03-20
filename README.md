@@ -4,7 +4,9 @@ AI Toolkit is an all in one training suite for diffusion models. I try to suppor
 
 Now with added support for Text encoder and Transformer training on Z-Image models, simultaneously on only 24GB of VRAM. Example config at the bottom of the page. To make it fit on 24GB of VRAM, it requires layer offloading of the Transformer. And there is now 2 fields for Learning Rate, Text Encoder and Transformer/Unet. Change "type" to Loha to train a loha.
 
-Also added support for SDA loss for Z-Image models.
+Also added support for SDA loss for Z-Image models. 
+
+Added experimental support for Z-Image I2L training methods from Diffsynth Studio.
 
 ## Support My Work
 
