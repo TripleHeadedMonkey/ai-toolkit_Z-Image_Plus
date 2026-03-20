@@ -141,6 +141,10 @@ class SDTrainer(BaseSDTrainProcess):
                     output_path = self._get_i2l_cache_output_path(image_paths)
 
                 i2l_device = getattr(self.train_config, "zimage_i2l_device", "cpu")
+                restore_device_state = getattr(self, "train_device_state_preset", None)
+                if restore_device_state is None:
+                    restore_device_state = {"device": self.device, "train_unet": False, "require_grads": False}
+
                 # free training-model VRAM before running I2L generation
                 self.sd.set_device_state({"device": "cpu", "train_unet": False, "require_grads": False})
                 flush()
@@ -157,7 +161,7 @@ class SDTrainer(BaseSDTrainProcess):
                         device=i2l_device,
                     )
                 finally:
-                    self.sd.set_device_state(self.train_device_state_preset)
+                    self.sd.set_device_state(restore_device_state)
                     flush()
                 self._record_i2l_cache_entry(image_paths, init_lora_path)
             self.train_config.zimage_init_lora_path = init_lora_path
