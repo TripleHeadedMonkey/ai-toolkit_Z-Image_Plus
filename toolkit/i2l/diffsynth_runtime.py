@@ -63,17 +63,7 @@ def generate_zimage_i2l_lora(
             torch_dtype=torch.bfloat16,
             device=device,
             model_configs=[
-                ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/config.json"),
-                ModelConfig(
-                    model_id=base_model_name_or_path,
-                    origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
-                ),
                 ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
-                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/config.json"),
-                ModelConfig(
-                    model_id=turbo_model_name_or_path,
-                    origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
-                ),
                 ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors"),
                 ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors"),
                 ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
