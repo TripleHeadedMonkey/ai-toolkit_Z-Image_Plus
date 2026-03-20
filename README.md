@@ -6,7 +6,7 @@ Now with added support for Text encoder and Transformer training on Z-Image mode
 
 Also added support for SDA loss for Z-Image models. 
 
-Added experimental support for Z-Image I2L training methods from Diffsynth Studio.
+Added experimental support for Z-Image I2L training methods from Diffsynth Studio. Work IN Progress, not functional yet.
 
 ## Support My Work
 
