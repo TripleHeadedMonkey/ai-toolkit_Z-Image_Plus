@@ -150,6 +150,7 @@ class ZImageModel(BaseModel):
             transformer_path, 
             subfolder=transformer_subfolder, 
             torch_dtype=dtype,
+            use_safetensors=True,
             low_cpu_mem_usage=False, 
             ignore_mismatched_sizes=True
         )
