@@ -443,6 +443,24 @@ const docs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
+  'train.zimage_i2l_vram_limit_gb': {
+    title: 'Z-Image I2L VRAM Limit (GB)',
+    description: (
+      <>
+        Optional VRAM cap passed to DiffSynth <code>ZImagePipeline.from_pretrained(...)</code>. Set this when running
+        I2L on <code>cuda</code> to reduce peak memory during model load. Leave unset to use DiffSynth defaults.
+      </>
+    ),
+  },
+  'train.zimage_i2l_offload_mode': {
+    title: 'Z-Image I2L Offload Mode',
+    description: (
+      <>
+        Controls where DiffSynth keeps offloaded weights during I2L bootstrap. Use <code>cpu</code> for balanced speed,
+        or <code>disk</code> for the lowest VRAM usage (slower, but often more stable on 24GB cards).
+      </>
+    ),
+  },
   'train.zimage_i2l_output_path': {
     title: 'Z-Image I2L Output Path',
     description: (

@@ -159,6 +159,8 @@ class SDTrainer(BaseSDTrainProcess):
                         base_model_name_or_path=self.train_config.zimage_i2l_base_model_name_or_path,
                         turbo_model_name_or_path=self.train_config.zimage_i2l_turbo_model_name_or_path,
                         device=i2l_device,
+                        vram_limit_gb=self.train_config.zimage_i2l_vram_limit_gb,
+                        offload_mode=self.train_config.zimage_i2l_offload_mode,
                     )
                 finally:
                     self.sd.set_device_state(restore_device_state)

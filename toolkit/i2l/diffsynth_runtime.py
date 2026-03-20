@@ -12,6 +12,8 @@ def generate_zimage_i2l_lora(
     base_model_name_or_path: str = "Tongyi-MAI/Z-Image",
     turbo_model_name_or_path: str = "Tongyi-MAI/Z-Image-Turbo",
     device: str = "cuda",
+    vram_limit_gb: Optional[float] = None,
+    offload_mode: str = "cpu",
 ):
     try:
         import torch
@@ -46,21 +48,29 @@ def generate_zimage_i2l_lora(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Keep storage/offload on CPU and only move layers to the requested runtime device on demand.
-    # This greatly reduces peak VRAM during pipeline bootstrap on 24GB cards.
+    offload_mode = (offload_mode or "cpu").lower()
+    if offload_mode not in {"cpu", "disk"}:
+        raise ValueError(f"Unsupported I2L offload mode '{offload_mode}'. Expected one of: cpu, disk.")
+
+    # Keep storage/offload on CPU or disk and only move layers to runtime device on demand.
+    # This reduces peak VRAM during pipeline bootstrap on constrained cards.
     vram_config = {
         "offload_dtype": torch.bfloat16,
-        "offload_device": "cpu",
+        "offload_device": offload_mode,
         "onload_dtype": torch.bfloat16,
         "onload_device": device,
         "preparing_dtype": torch.bfloat16,
-        "preparing_device": "cpu",
+        "preparing_device": offload_mode,
         "computation_dtype": torch.bfloat16,
         "computation_device": device,
     }
 
     torch.load = _torch_load_force_unsafe
     try:
+        from_pretrained_kwargs = {}
+        if vram_limit_gb is not None:
+            from_pretrained_kwargs["vram_limit"] = float(vram_limit_gb)
+
         pipe = ZImagePipeline.from_pretrained(
             torch_dtype=torch.bfloat16,
             device=device,
@@ -74,6 +84,7 @@ def generate_zimage_i2l_lora(
                 ModelConfig(model_id=i2l_model_name_or_path, origin_file_pattern="model.safetensors", **vram_config),
             ],
             tokenizer_config=ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="tokenizer/"),
+            **from_pretrained_kwargs,
         )
     finally:
         torch.load = original_torch_load

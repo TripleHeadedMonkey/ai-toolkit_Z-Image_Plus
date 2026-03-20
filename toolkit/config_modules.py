@@ -529,6 +529,8 @@ class TrainConfig:
         self.zimage_i2l_max_images = kwargs.get('zimage_i2l_max_images', 6)
         self.zimage_i2l_image_select_seed = kwargs.get('zimage_i2l_image_select_seed', None)
         self.zimage_i2l_device = kwargs.get('zimage_i2l_device', 'cpu')
+        self.zimage_i2l_vram_limit_gb = kwargs.get('zimage_i2l_vram_limit_gb', None)
+        self.zimage_i2l_offload_mode = kwargs.get('zimage_i2l_offload_mode', 'cpu')  # cpu, disk
         self.zimage_i2l_output_path = kwargs.get('zimage_i2l_output_path', None)
 
         # repeats the prompt a few times to saturate the encoder
