@@ -510,6 +510,27 @@ class TrainConfig:
         # assistant masking behavior: assistant OFF for diversity pass and ON for anchor pass
         self.sda_asymmetric_assistant_mask = kwargs.get('sda_asymmetric_assistant_mask', True)
 
+        # Z-Image I2L boost options (optional warm-start/boost phase)
+        self.zimage_bootstrap_enabled = kwargs.get('zimage_bootstrap_enabled', False)
+        self.zimage_bootstrap_steps = kwargs.get('zimage_bootstrap_steps', 300)
+        self.zimage_bootstrap_decay = kwargs.get('zimage_bootstrap_decay', 'linear')  # linear, cosine, exp
+        self.zimage_bootstrap_lr_multiplier = kwargs.get('zimage_bootstrap_lr_multiplier', 1.0)
+        self.zimage_bootstrap_loss_weight = kwargs.get('zimage_bootstrap_loss_weight', 1.0)
+        self.zimage_init_lora_path = kwargs.get('zimage_init_lora_path', None)
+        self.zimage_init_lora_scale = kwargs.get('zimage_init_lora_scale', 1.0)
+        self.zimage_init_strategy = kwargs.get('zimage_init_strategy', 'copy')  # copy, merge, interpolate
+        self.zimage_i2l_only = kwargs.get('zimage_i2l_only', False)
+        self.zimage_i2l_model_name_or_path = kwargs.get('zimage_i2l_model_name_or_path', 'DiffSynth-Studio/Z-Image-i2L')
+        self.zimage_i2l_encoders_name_or_path = kwargs.get('zimage_i2l_encoders_name_or_path', 'DiffSynth-Studio/General-Image-Encoders')
+        self.zimage_i2l_base_model_name_or_path = kwargs.get('zimage_i2l_base_model_name_or_path', 'Tongyi-MAI/Z-Image')
+        self.zimage_i2l_turbo_model_name_or_path = kwargs.get('zimage_i2l_turbo_model_name_or_path', 'Tongyi-MAI/Z-Image-Turbo')
+        self.zimage_i2l_dataset_path = kwargs.get('zimage_i2l_dataset_path', None)
+        self.zimage_i2l_image_paths = kwargs.get('zimage_i2l_image_paths', None)
+        self.zimage_i2l_max_images = kwargs.get('zimage_i2l_max_images', 6)
+        self.zimage_i2l_image_select_seed = kwargs.get('zimage_i2l_image_select_seed', None)
+        self.zimage_i2l_device = kwargs.get('zimage_i2l_device', 'cpu')
+        self.zimage_i2l_output_path = kwargs.get('zimage_i2l_output_path', None)
+
         # repeats the prompt a few times to saturate the encoder
         self.prompt_saturation_chance = kwargs.get('prompt_saturation_chance', 0.0)
 
