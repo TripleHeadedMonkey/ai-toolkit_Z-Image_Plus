@@ -46,13 +46,15 @@ def generate_zimage_i2l_lora(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
+    # Keep storage/offload on CPU and only move layers to the requested runtime device on demand.
+    # This greatly reduces peak VRAM during pipeline bootstrap on 24GB cards.
     vram_config = {
         "offload_dtype": torch.bfloat16,
-        "offload_device": device,
+        "offload_device": "cpu",
         "onload_dtype": torch.bfloat16,
         "onload_device": device,
         "preparing_dtype": torch.bfloat16,
-        "preparing_device": device,
+        "preparing_device": "cpu",
         "computation_dtype": torch.bfloat16,
         "computation_device": device,
     }
@@ -64,12 +66,12 @@ def generate_zimage_i2l_lora(
             device=device,
             model_configs=[
                 ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
-                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors"),
-                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors"),
-                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
-                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="SigLIP2-G384/model.safetensors"),
-                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="DINOv3-7B/model.safetensors"),
-                ModelConfig(model_id=i2l_model_name_or_path, origin_file_pattern="model.safetensors"),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors", **vram_config),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors", **vram_config),
+                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="SigLIP2-G384/model.safetensors", **vram_config),
+                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="DINOv3-7B/model.safetensors", **vram_config),
+                ModelConfig(model_id=i2l_model_name_or_path, origin_file_pattern="model.safetensors", **vram_config),
             ],
             tokenizer_config=ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="tokenizer/"),
         )
