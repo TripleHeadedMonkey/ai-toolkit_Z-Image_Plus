@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import List
 
 
 def generate_zimage_i2l_lora(
