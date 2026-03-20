@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import List
 
 
 def generate_zimage_i2l_lora(
@@ -53,10 +53,16 @@ def generate_zimage_i2l_lora(
         device=device,
         model_configs=[
             ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/config.json"),
-            ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json"),
+            ModelConfig(
+                model_id=base_model_name_or_path,
+                origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
+            ),
             ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
             ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/config.json"),
-            ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json"),
+            ModelConfig(
+                model_id=turbo_model_name_or_path,
+                origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
+            ),
             ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors"),
             ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors"),
             ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
