@@ -29,6 +29,15 @@ def generate_zimage_i2l_lora(
             "Install DiffSynth-Studio in this environment or provide train.zimage_init_lora_path."
         ) from e
 
+    # DiffSynth currently calls torch.load(..., weights_only=True) in some code paths.
+    # PyTorch 2.6+ made this stricter and it can fail on trusted model bins used by DiffSynth.
+    # For this controlled runtime path we force weights_only=False during I2L model loading.
+    original_torch_load = torch.load
+
+    def _torch_load_force_unsafe(*args, **kwargs):
+        kwargs["weights_only"] = False
+        return original_torch_load(*args, **kwargs)
+
     if len(image_paths) == 0:
         raise ValueError("No image paths provided for I2L generation.")
 
@@ -48,30 +57,34 @@ def generate_zimage_i2l_lora(
         "computation_device": device,
     }
 
-    pipe = ZImagePipeline.from_pretrained(
-        torch_dtype=torch.bfloat16,
-        device=device,
-        model_configs=[
-            ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/config.json"),
-            ModelConfig(
-                model_id=base_model_name_or_path,
-                origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
-            ),
-            ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
-            ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/config.json"),
-            ModelConfig(
-                model_id=turbo_model_name_or_path,
-                origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
-            ),
-            ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors"),
-            ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors"),
-            ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
-            ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="SigLIP2-G384/model.safetensors"),
-            ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="DINOv3-7B/model.safetensors"),
-            ModelConfig(model_id=i2l_model_name_or_path, origin_file_pattern="model.safetensors"),
-        ],
-        tokenizer_config=ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="tokenizer/"),
-    )
+    torch.load = _torch_load_force_unsafe
+    try:
+        pipe = ZImagePipeline.from_pretrained(
+            torch_dtype=torch.bfloat16,
+            device=device,
+            model_configs=[
+                ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/config.json"),
+                ModelConfig(
+                    model_id=base_model_name_or_path,
+                    origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
+                ),
+                ModelConfig(model_id=base_model_name_or_path, origin_file_pattern="transformer/*.safetensors", **vram_config),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/config.json"),
+                ModelConfig(
+                    model_id=turbo_model_name_or_path,
+                    origin_file_pattern="transformer/diffusion_pytorch_model.safetensors.index.json",
+                ),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="transformer/*.safetensors"),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="text_encoder/*.safetensors"),
+                ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
+                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="SigLIP2-G384/model.safetensors"),
+                ModelConfig(model_id=encoders_name_or_path, origin_file_pattern="DINOv3-7B/model.safetensors"),
+                ModelConfig(model_id=i2l_model_name_or_path, origin_file_pattern="model.safetensors"),
+            ],
+            tokenizer_config=ModelConfig(model_id=turbo_model_name_or_path, origin_file_pattern="tokenizer/"),
+        )
+    finally:
+        torch.load = original_torch_load
 
     images = [Image.open(path).convert("RGB") for path in image_paths]
 
