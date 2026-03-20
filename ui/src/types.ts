@@ -164,6 +164,7 @@ export interface TrainConfig {
   zimage_i2l_image_paths?: string[];
   zimage_i2l_max_images?: number;
   zimage_i2l_image_select_seed?: number;
+  zimage_i2l_device?: string;
   zimage_i2l_output_path?: string;
 }
 

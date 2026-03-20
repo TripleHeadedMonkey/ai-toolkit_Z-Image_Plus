@@ -434,6 +434,15 @@ const docs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
+  'train.zimage_i2l_device': {
+    title: 'Z-Image I2L Device',
+    description: (
+      <>
+        Device used for I2L generation runtime. Default is <code>cpu</code> to avoid VRAM spikes before training
+        begins. Set to <code>cuda</code> only if you have enough headroom.
+      </>
+    ),
+  },
   'train.zimage_i2l_output_path': {
     title: 'Z-Image I2L Output Path',
     description: (
